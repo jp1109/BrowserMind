@@ -1,4 +1,7 @@
-
+from uuid import uuid4
+import threading
+import urllib.request
+import urllib.error
 import json
 import logging
 from pathlib import Path
@@ -13,6 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("browsermind")
 
 BASE_DIR = Path(__file__).resolve().parent
+research_lock = threading.Lock()
 
 app = FastAPI(
     title="BrowserMind API",
@@ -105,8 +109,30 @@ def stream_research(question: str):
             f"data: {json.dumps(data)}\n\n"
         )
 
+    
     def generate():
+
+        session_id = str(uuid4())
+        logger.info("Research session started: %s", session_id)
+
+        if not research_lock.acquire(blocking=False):
+            yield send_event(
+                "research_error",
+                {
+                    "message": (
+                        "BrowserMind is already researching. "
+                        "Please try again after it finishes."
+                    )
+                }
+            )
+            return
+
         state = initial_state(question)
+        
+        yield send_event(
+            "session",
+            {"session_id": session_id}
+        )
 
         try:
             for update in agent_graph.stream(
@@ -143,11 +169,13 @@ def stream_research(question: str):
 
         except Exception:
             logger.exception("Streaming research failed")
-
             yield send_event(
                 "research_error",
                 {"message": "Research workflow failed"}
             )
+
+        finally:
+            research_lock.release()
 
     return StreamingResponse(
         generate(),
@@ -157,3 +185,26 @@ def stream_research(question: str):
             "X-Accel-Buffering": "no"
         }
     )
+
+
+@app.get("/health")
+def health_check():
+    ollama_status = "offline"
+
+    try:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:11434/api/tags",
+            timeout=3
+        ) as response:
+            if response.status == 200:
+                ollama_status = "online"
+
+    except (urllib.error.URLError, TimeoutError, OSError):
+        pass
+
+    return {
+        "application": "BrowserMind",
+        "api": "online",
+        "ollama": ollama_status,
+        "ready": ollama_status == "online"
+    }

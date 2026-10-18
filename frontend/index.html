@@ -112,6 +112,9 @@ a { color: #a8b6ff; }
     </button>
 
     <p id="status" role="status"></p>
+
+<p id="sessionInfo" style="color:#8b9dff;"></p>
+
 </section>
 
 <section class="card" id="agentProgress">
@@ -205,6 +208,9 @@ function startResearch() {
     }
 
     button.disabled = true;
+
+document.getElementById("sessionInfo").textContent = "";
+
     statusText.textContent = "Starting AI research...";
 
     document.getElementById("agentProgress")
@@ -220,6 +226,15 @@ function startResearch() {
 
     const source = new EventSource(url);
     activeSource = source;
+
+
+source.addEventListener("session", (event) => {
+    const data = JSON.parse(event.data);
+
+    document.getElementById("sessionInfo").textContent =
+        "Research Session: " + data.session_id;
+});
+
 
     source.addEventListener("progress", (event) => {
         const data = JSON.parse(event.data);

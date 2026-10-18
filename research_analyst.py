@@ -1,12 +1,15 @@
-
+import time
+import httpx
 import json
 from pathlib import Path
 from langchain_ollama import ChatOllama
 
+
 llm = ChatOllama(
     model="llama3.2:3b",
     temperature=0,
-    num_predict=300
+    num_predict=300,
+    client_kwargs={"timeout": 120}
 )
 
 
@@ -52,23 +55,26 @@ Evidence:
 {evidence}
 """
 
-    response = llm.invoke(prompt)
+    
+    max_attempts = 2
 
-    output = {
-        "question": research["question"],
-        "analysis": str(response.content),
-        "source_urls": [
-            source["url"] for source in sources
-        ]
-    }
+    for attempt in range(1, max_attempts + 1):
+        try:
+            print(f"Research Analyst: attempt {attempt}")
+            response = llm.invoke(prompt)
+            break
 
-    Path("research_analysis.json").write_text(
-        json.dumps(output, indent=4),
-        encoding="utf-8"
-    )
+        except (
+            httpx.TimeoutException,
+            httpx.ConnectError
+        ) as error:
+            if attempt == max_attempts:
+                raise RuntimeError(
+                    "Research Analyst unavailable after retries"
+                ) from error
 
-    print("\nResearch analysis completed!")
-    return output
+            print("Temporary Ollama error. Retrying...")
+            time.sleep(2)
 
 
 if __name__ == "__main__":
