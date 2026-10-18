@@ -1,0 +1,303 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BrowserMind | AI Research</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: #0b1020;
+    color: white;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    max-width: 900px;
+    margin: 60px auto;
+    padding: 24px;
+}
+
+h1 {
+    font-size: 48px;
+    color: #8b9dff;
+    margin-bottom: 8px;
+}
+
+.subtitle { color: #aeb8d0; }
+
+.card {
+    background: #171e35;
+    border: 1px solid #34405e;
+    border-radius: 14px;
+    padding: 24px;
+    margin-top: 24px;
+}
+
+textarea {
+    width: 100%;
+    padding: 16px;
+    border-radius: 10px;
+    background: #0b1020;
+    border: 1px solid #465477;
+    color: white;
+    font-size: 16px;
+    resize: vertical;
+}
+
+button {
+    background: #7588ff;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 26px;
+    margin-top: 16px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#status { color: #b9c5e8; }
+
+#agentProgress, #results {
+    display: none;
+}
+
+.agent {
+    padding: 10px;
+    border-bottom: 1px solid #34405e;
+    color: #aeb8d0;
+}
+
+.agent.done { color: #64d8a2; }
+
+#analysis {
+    white-space: pre-wrap;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+li { margin: 10px 0; }
+
+a { color: #a8b6ff; }
+</style>
+</head>
+
+<body>
+<main class="container">
+
+<h1>BrowserMind</h1>
+<p class="subtitle">Your Agentic AI Research Assistant</p>
+
+<section class="card">
+    <h2>Start Research</h2>
+
+    <textarea
+        id="question"
+        rows="4"
+        placeholder="Enter your research question..."
+    ></textarea>
+
+    <button id="runButton" type="button">
+        Run AI Research
+    </button>
+
+    <p id="status" role="status"></p>
+</section>
+
+<section class="card" id="agentProgress">
+    <h2>AI Agent Workflow</h2>
+    <div class="agent" id="planner">○ Planner Agent</div>
+    <div class="agent" id="browser">○ Browser Research Agent</div>
+    <div class="agent" id="analyst">○ Research Analyst</div>
+    <div class="agent" id="verifier">○ Verification Agent</div>
+</section>
+
+<section id="results">
+
+    <div class="card">
+        <h2>Research Plan</h2>
+        <ol id="tasks"></ol>
+    </div>
+
+    <div class="card">
+        <h2>AI Research Analysis</h2>
+        <div id="analysis"></div>
+    </div>
+
+    <div class="card">
+        <h2>Verification Result</h2>
+        <p id="verdict"></p>
+    </div>
+
+    <div class="card">
+        <h2>Research Sources</h2>
+        <ul id="sources"></ul>
+    </div>
+
+</section>
+</main>
+
+<script>
+"use strict";
+
+const button = document.getElementById("runButton");
+const statusText = document.getElementById("status");
+
+let activeSource = null;
+
+function updateProgress(agentName) {
+    const element = document.getElementById(agentName);
+
+    if (!element) return;
+
+    element.classList.add("done");
+    element.textContent =
+        "✓ " + element.textContent.replace(/^[○✓]\s*/, "");
+}
+
+function resetProgress() {
+    const names = {
+        planner: "Planner Agent",
+        browser: "Browser Research Agent",
+        analyst: "Research Analyst",
+        verifier: "Verification Agent"
+    };
+
+    for (const [id, label] of Object.entries(names)) {
+        const element = document.getElementById(id);
+        element.classList.remove("done");
+        element.textContent = "○ " + label;
+    }
+}
+
+function finishResearch() {
+    button.disabled = false;
+
+    if (activeSource) {
+        activeSource.close();
+        activeSource = null;
+    }
+}
+
+function startResearch() {
+    const question = document
+        .getElementById("question")
+        .value.trim();
+
+    if (question.length < 3) {
+        statusText.textContent =
+            "Please enter a research question.";
+        return;
+    }
+
+    if (activeSource) {
+        activeSource.close();
+    }
+
+    button.disabled = true;
+    statusText.textContent = "Starting AI research...";
+
+    document.getElementById("agentProgress")
+        .style.display = "block";
+
+    document.getElementById("results")
+        .style.display = "none";
+
+    resetProgress();
+
+    const url = "/research/stream?question=" +
+        encodeURIComponent(question);
+
+    const source = new EventSource(url);
+    activeSource = source;
+
+    source.addEventListener("progress", (event) => {
+        const data = JSON.parse(event.data);
+
+        updateProgress(data.agent);
+
+        statusText.textContent =
+            data.agent + " completed.";
+    });
+
+    source.addEventListener("result", (event) => {
+        const data = JSON.parse(event.data);
+
+        const tasks = document.getElementById("tasks");
+        tasks.replaceChildren();
+
+        for (const task of data.tasks || []) {
+            const item = document.createElement("li");
+            item.textContent = task;
+            tasks.appendChild(item);
+        }
+
+        document.getElementById("analysis")
+            .textContent = data.analysis || "No analysis.";
+
+        document.getElementById("verdict")
+            .textContent = data.verdict || "uncertain";
+
+        const sources = document.getElementById("sources");
+        sources.replaceChildren();
+
+        for (const item of data.sources || []) {
+            if (!/^https?:\/\//i.test(item.url || "")) continue;
+
+            const li = document.createElement("li");
+            const link = document.createElement("a");
+
+            link.href = item.url;
+            link.textContent = item.title || item.url;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+
+            li.appendChild(link);
+            sources.appendChild(li);
+        }
+
+        document.getElementById("results")
+            .style.display = "block";
+
+        statusText.textContent = "Research completed!";
+        finishResearch();
+    });
+
+    source.addEventListener("research_error", (event) => {
+        let message = "Research failed. Check VS Code terminal.";
+
+        try {
+            message = JSON.parse(event.data).message || message;
+        } catch (_) {}
+
+        statusText.textContent = message;
+        finishResearch();
+    });
+
+    source.onerror = () => {
+        if (activeSource !== source) return;
+
+        statusText.textContent =
+            "Connection lost. Check FastAPI terminal.";
+
+        finishResearch();
+    };
+}
+
+button.addEventListener("click", startResearch);
+
+console.log("BrowserMind frontend loaded successfully");
+</script>
+
+</body>
+</html>
