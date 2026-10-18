@@ -1,3 +1,8 @@
+from io import BytesIO
+from fastapi.responses import StreamingResponse
+from pdf_export import generate_pdf
+from session_storage import load_research, list_research
+from uuid import UUID
 from session_storage import save_research
 from uuid import uuid4
 import threading
@@ -224,3 +229,94 @@ def health_check():
         "ollama": ollama_status,
         "ready": ollama_status == "online"
     }
+
+
+@app.get("/reports/{session_id}/download")
+def download_report(session_id: str):
+    try:
+        UUID(session_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session ID"
+        )
+
+    report = load_research(session_id)
+
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Report not found"
+        )
+
+    return FileResponse(
+        BASE_DIR / "reports" / f"{session_id}.json",
+        media_type="application/json",
+        filename=f"browsermind-{session_id}.json"
+    )
+
+
+@app.get("/reports/{session_id}/pdf")
+def download_pdf(session_id: str):
+    from uuid import UUID
+    from session_storage import load_research
+
+    try:
+        safe_id = str(UUID(session_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session ID"
+        )
+
+    report = load_research(safe_id)
+
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Research report not found"
+        )
+
+    pdf_bytes = generate_pdf(report)
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="browsermind-{safe_id}.pdf"'
+        }
+    )
+
+
+@app.get("/history")
+def research_history():
+    return {
+        "total": len(list_research()),
+        "sessions": list_research()
+    }
+
+
+@app.get("/history/{session_id}")
+def research_history_detail(session_id: str):
+    from uuid import UUID
+
+    try:
+        safe_id = str(UUID(session_id))
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid session ID"
+        )
+
+    report = load_research(safe_id)
+
+    if report is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Research session not found"
+        )
+
+    return report
+
+

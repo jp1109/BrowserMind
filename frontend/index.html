@@ -125,6 +125,17 @@ a { color: #a8b6ff; }
     <div class="agent" id="verifier">○ Verification Agent</div>
 </section>
 
+
+<section class="card">
+    <h2>Research History</h2>
+
+    <button type="button" id="historyButton">
+        Load Previous Research
+    </button>
+
+    <div id="historyList"></div>
+</section>
+
 <section id="results">
 
     <div class="card">
@@ -141,6 +152,34 @@ a { color: #a8b6ff; }
         <h2>Verification Result</h2>
         <p id="verdict"></p>
     </div>
+
+
+
+    <div class="card">
+        <h2>Download Research Report</h2>
+    
+        <a id="downloadReport"
+           href="#"
+           style="color:#8b9dff; display:none;">
+            ⬇ Download JSON
+        </a>
+    
+        <a id="downloadPDF"
+           href="#"
+           style="color:#8b9dff; display:none; margin-left:20px;">
+            ⬇ Download PDF
+        </a>
+    </div>
+    
+
+<a id="downloadPDF"
+href="#"
+style="color:#8b9dff; display:none; margin-left:20px;">
+ ⬇ Download PDF Report
+</a>
+
+</div>
+
 
     <div class="card">
         <h2>Research Sources</h2>
@@ -231,6 +270,21 @@ document.getElementById("sessionInfo").textContent = "";
 source.addEventListener("session", (event) => {
     const data = JSON.parse(event.data);
 
+const jsonLink = document.getElementById("downloadReport");
+const pdfLink = document.getElementById("downloadPDF");
+
+if (data.session_id) {
+    const base = "/reports/" +
+        encodeURIComponent(data.session_id);
+
+    jsonLink.href = base + "/download";
+    pdfLink.href = base + "/pdf";
+
+    jsonLink.style.display = "inline-block";
+    pdfLink.style.display = "inline-block";
+}
+
+
     document.getElementById("sessionInfo").textContent =
         "Research Session: " + data.session_id;
 });
@@ -238,6 +292,18 @@ source.addEventListener("session", (event) => {
 
     source.addEventListener("progress", (event) => {
         const data = JSON.parse(event.data);
+
+const pdfLink = document.getElementById("downloadPDF");
+
+if (data.session_id && pdfLink) {
+    pdfLink.href =
+        "/reports/" +
+        encodeURIComponent(data.session_id) +
+        "/pdf";
+
+    pdfLink.style.display = "inline-block";
+}
+
 
         updateProgress(data.agent);
 
@@ -247,6 +313,18 @@ source.addEventListener("session", (event) => {
 
     source.addEventListener("result", (event) => {
         const data = JSON.parse(event.data);
+
+const downloadLink = document.getElementById("downloadReport");
+
+if (data.session_id) {
+    downloadLink.href =
+        "/reports/" +
+        encodeURIComponent(data.session_id) +
+        "/download";
+
+    downloadLink.style.display = "inline-block";
+}
+
 
         const tasks = document.getElementById("tasks");
         tasks.replaceChildren();
@@ -312,6 +390,96 @@ source.addEventListener("session", (event) => {
 button.addEventListener("click", startResearch);
 
 console.log("BrowserMind frontend loaded successfully");
+
+async function loadHistory() {
+    const container = document.getElementById("historyList");
+    container.textContent = "Loading research history...";
+
+    try {
+        const response = await fetch("/history");
+
+        if (!response.ok) {
+            throw new Error("Unable to load research history");
+        }
+
+        const data = await response.json();
+        container.replaceChildren();
+
+        if (!data.sessions.length) {
+            container.textContent = "No saved research yet.";
+            return;
+        }
+
+        for (const session of data.sessions) {
+            const card = document.createElement("div");
+            card.className = "card";
+
+            const title = document.createElement("strong");
+            title.textContent = session.question || "Untitled research";
+
+            const details = document.createElement("p");
+            details.textContent =
+                "Verification: " + session.verdict;
+
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "Open Report";
+
+            button.addEventListener("click", () => {
+                openSavedReport(session.session_id);
+            });
+
+            card.append(title, details, button);
+            container.appendChild(card);
+        }
+
+    } catch (error) {
+        container.textContent = error.message;
+    }
+}
+
+async function openSavedReport(sessionId) {
+    try {
+        const response = await fetch(
+            "/history/" + encodeURIComponent(sessionId)
+        );
+
+        if (!response.ok) {
+            throw new Error("Unable to open saved report");
+        }
+
+        const saved = await response.json();
+        const data = saved.research;
+
+        const tasks = document.getElementById("tasks");
+        tasks.replaceChildren();
+
+        for (const task of data.tasks || []) {
+            const item = document.createElement("li");
+            item.textContent = task;
+            tasks.appendChild(item);
+        }
+
+        document.getElementById("analysis").textContent =
+            data.analysis || "No analysis available";
+
+        document.getElementById("verdict").textContent =
+            data.verdict || "uncertain";
+
+        document.getElementById("results").style.display = "block";
+
+        document.getElementById("results").scrollIntoView({
+            behavior: "smooth"
+        });
+
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+document.getElementById("historyButton")
+    .addEventListener("click", loadHistory);
+
 </script>
 
 </body>

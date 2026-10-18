@@ -47,3 +47,32 @@ def load_research(session_id):
 
     with destination.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def list_research():
+    history = []
+
+    for path in REPORTS_DIR.glob("*.json"):
+        try:
+            report = json.loads(
+                path.read_text(encoding="utf-8")
+            )
+
+            research = report.get("research", {})
+
+            history.append({
+                "session_id": report["session_id"],
+                "question": research.get("question", ""),
+                "created_at": report.get("created_at", ""),
+                "verdict": research.get("verdict", "uncertain")
+            })
+
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+
+    return sorted(
+        history,
+        key=lambda item: item["created_at"],
+        reverse=True
+    )
+
