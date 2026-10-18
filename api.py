@@ -1,3 +1,4 @@
+from session_storage import save_research
 from uuid import uuid4
 import threading
 import urllib.request
@@ -164,6 +165,21 @@ def stream_research(question: str):
                     if source.get("status") == "success"
                 ]
             }
+
+            result["session_id"] = session_id
+
+            saved_path = save_research(
+                session_id,
+                result
+            )
+
+            logger.info(
+                "Research report saved: %s",
+                saved_path
+            )
+
+            
+            
 
             yield send_event("result", result)
 
